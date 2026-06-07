@@ -1,0 +1,44 @@
+name: StarlinkMonitor
+options:
+  bundleIdPrefix: com.example
+packages:
+  grpc-swift-2:
+    url: https://github.com/grpc/grpc-swift-2.git
+    from: 2.3.0
+  grpc-swift-protobuf:
+    url: https://github.com/grpc/grpc-swift-protobuf.git
+    from: 2.4.0
+  grpc-swift-nio-transport:
+    url: https://github.com/grpc/grpc-swift-nio-transport.git
+    from: 2.7.0
+  sparkle:
+    url: https://github.com/sparkle-project/Sparkle.git
+    from: 2.6.0
+
+targets:
+  StarlinkMonitor:
+    type: application
+    platform: macOS
+    deploymentTarget:
+      macOS: "15.0"
+    version: "2.0.0"
+    build: 3
+    sources:
+      - path: Sources
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
+      INFOPLIST_KEY_NSPrincipalClass: NSApplication
+      SUFeedURL: "https://github.com/example/starlinkmonitor/releases/latest/download/appcast.xml"
+      SUPublicEDKey: "placeholder_ed25519_key_generate_with_sparkle"
+      CODE_SIGN_IDENTITY: ""
+      CODE_SIGNING_REQUIRED: "NO"
+      CODE_SIGNING_ALLOWED: "NO"
+    dependencies:
+      - package: grpc-swift-2
+        product: GRPCCore
+      - package: grpc-swift-protobuf
+        product: GRPCProtobuf
+      - package: grpc-swift-nio-transport
+        product: GRPCNIOTransportHTTP2
+      - package: sparkle
+        product: Sparkle
