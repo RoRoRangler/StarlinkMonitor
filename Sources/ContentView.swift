@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var monitor = TelemetryMonitor()
+    @ObservedObject var monitor: TelemetryMonitor
     @State private var selection: SidebarItem = .overview
     
     enum SidebarItem: String, CaseIterable, Identifiable {

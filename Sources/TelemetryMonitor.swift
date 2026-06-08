@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import SwiftData
 
 @MainActor
 class TelemetryMonitor: ObservableObject {
@@ -32,6 +33,11 @@ class TelemetryMonitor: ObservableObject {
     
     // Sky View
     @Published var obstructionMap: SpaceX_API_Device_DishGetObstructionMapResponse? = nil
+    
+    // SwiftData
+    var modelContainer: ModelContainer?
+    private var lastSnapshotTime: Date = .now
+    private var currentOutage: OutageEvent?
     
     private var pollingTask: Task<Void, Never>?
     private var loopCounter: Int = 0
@@ -108,7 +114,8 @@ class TelemetryMonitor: ObservableObject {
             
             self.hardwareVersion = status.dishGetStatus.deviceInfo.hardwareVersion
             self.softwareVersion = status.dishGetStatus.deviceInfo.softwareVersion
-            self.state = String(describing: status.dishGetStatus.deviceState)
+            let isConnected = status.dishGetStatus.outage.cause == .unknown
+            self.state = isConnected ? "Connected" : String(describing: status.dishGetStatus.outage.cause).capitalized
             
             self.clients = clientsRes.clients
             
@@ -121,8 +128,60 @@ class TelemetryMonitor: ObservableObject {
             self.boresightAzimuthDeg = Double(status.dishGetStatus.boresightAzimuthDeg)
             self.boresightElevationDeg = Double(status.dishGetStatus.boresightElevationDeg)
             
+            await handleTelemetryData(status: status, history: history)
+            
         } catch {
             self.state = "Error: \(error.localizedDescription)"
+            await handleOutage(cause: error.localizedDescription)
+        }
+    }
+    
+    private func handleTelemetryData(status: SpaceX_API_Device_Response, history: SpaceX_API_Device_DishGetHistoryResponse) async {
+        let isConnected = status.dishGetStatus.outage.cause == .unknown
+        
+        if isConnected {
+            if let outage = currentOutage {
+                outage.endTimestamp = .now
+                if let context = modelContainer?.mainContext {
+                    try? context.save()
+                }
+                NotificationManager.shared.sendRestoredNotification(durationSeconds: outage.durationSeconds)
+                currentOutage = nil
+            }
+            
+            // Save snapshot every 5 minutes
+            if Date.now.timeIntervalSince(lastSnapshotTime) >= 300 {
+                let snapshot = TelemetrySnapshot(
+                    pingLatencyMs: history.popPingLatencyMs.last ?? 0,
+                    downlinkThroughputBps: history.downlinkThroughputBps.last ?? 0,
+                    uplinkThroughputBps: history.uplinkThroughputBps.last ?? 0,
+                    fractionObstructed: status.dishGetStatus.obstructionStats.fractionObstructed
+                )
+                if let context = modelContainer?.mainContext {
+                    context.insert(snapshot)
+                    try? context.save()
+                }
+                lastSnapshotTime = .now
+            }
+            
+            // Check for severe ping spikes
+            if let ping = history.popPingLatencyMs.last, ping > 200 {
+                await handleOutage(cause: "High Ping: \(String(format: "%.0f", ping))ms")
+            }
+        } else {
+            await handleOutage(cause: "State: \(String(describing: status.dishGetStatus.outage.cause))")
+        }
+    }
+    
+    private func handleOutage(cause: String) async {
+        if currentOutage == nil {
+            let outage = OutageEvent(cause: cause)
+            currentOutage = outage
+            if let context = modelContainer?.mainContext {
+                context.insert(outage)
+                try? context.save()
+            }
+            NotificationManager.shared.sendOutageNotification(cause: cause)
         }
     }
 }
