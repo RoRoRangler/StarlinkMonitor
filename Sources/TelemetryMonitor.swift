@@ -31,8 +31,12 @@ class TelemetryMonitor: ObservableObject {
     @Published var boresightAzimuthDeg: Double = 0
     @Published var boresightElevationDeg: Double = 0
     
-    // Sky View
+    // Sky View & GPS
     @Published var obstructionMap: SpaceX_API_Device_DishGetObstructionMapResponse? = nil
+    @Published var tracker = SatelliteTracker()
+    
+    // Router Config
+    @Published var routerWifiConfig: SpaceX_API_Device_WifiConfig? = nil
     
     // SwiftData
     var modelContainer: ModelContainer?
@@ -42,6 +46,7 @@ class TelemetryMonitor: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var loopCounter: Int = 0
     private var activeService: StarlinkService?
+    private var routerService: StarlinkService?
     
     init() {
         if let savedIP = UserDefaults.standard.string(forKey: "starlinkIP") {
@@ -52,8 +57,10 @@ class TelemetryMonitor: ObservableObject {
     
     private func updateService() {
         activeService?.close()
+        routerService?.close()
         do {
             activeService = try StarlinkService(host: ipAddress)
+            routerService = try StarlinkService(host: "192.168.1.1") // Default Router IP
         } catch {
             print("Failed to initialize StarlinkService: \(error)")
         }
@@ -66,21 +73,24 @@ class TelemetryMonitor: ObservableObject {
             while !Task.isCancelled {
                 await fetchTelemetry()
                 
-                // Fetch obstruction map every 15 iterations (approx 30 seconds)
+                // Fetch obstruction map and router config every 15 iterations (approx 30 seconds)
                 if loopCounter % 15 == 0 {
                     await fetchObstructionMap()
+                    await fetchRouterConfig()
                 }
                 loopCounter += 1
                 
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
             }
         }
+        tracker.startTracking()
     }
     
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
         isPolling = false
+        tracker.stopTracking()
     }
     
     private func restartPolling() {
@@ -98,6 +108,24 @@ class TelemetryMonitor: ObservableObject {
         } catch {
             print("Failed to fetch obstruction map: \(error)")
         }
+    }
+    
+    private func fetchRouterConfig() async {
+        guard let router = routerService else { return }
+        do {
+            let configRes = try await router.getWifiConfig()
+            await MainActor.run {
+                self.routerWifiConfig = configRes.wifiConfig
+            }
+        } catch {
+            print("Failed to fetch router config: \(error)")
+        }
+    }
+    
+    func updateRouterWifiConfig(_ config: SpaceX_API_Device_WifiConfig) async throws {
+        guard let router = routerService else { throw NSError(domain: "RouterConfig", code: 1, userInfo: [NSLocalizedDescriptionKey: "Router service not initialized"]) }
+        let _ = try await router.setWifiConfig(config: config)
+        await fetchRouterConfig()
     }
     
     private func fetchTelemetry() async {
@@ -155,7 +183,9 @@ class TelemetryMonitor: ObservableObject {
                     pingLatencyMs: history.popPingLatencyMs.last ?? 0,
                     downlinkThroughputBps: history.downlinkThroughputBps.last ?? 0,
                     uplinkThroughputBps: history.uplinkThroughputBps.last ?? 0,
-                    fractionObstructed: status.dishGetStatus.obstructionStats.fractionObstructed
+                    fractionObstructed: status.dishGetStatus.obstructionStats.fractionObstructed,
+                    latitude: tracker.userLocation?.latitude,
+                    longitude: tracker.userLocation?.longitude
                 )
                 if let context = modelContainer?.mainContext {
                     context.insert(snapshot)

@@ -11,6 +11,7 @@ struct ContentView: View {
         case charts = "Telemetry Charts"
         case controls = "Hardware Controls"
         case router = "Router Settings"
+        case tripLog = "RV Trip Log"
         case wifiAnalyzer = "WiFi Analyzer"
         var id: String { self.rawValue }
     }
@@ -59,6 +60,8 @@ struct ContentView: View {
                 ControlsView(monitor: monitor)
             case .router:
                 RouterConfigView(monitor: monitor)
+            case .tripLog:
+                TripLogView()
             case .wifiAnalyzer:
                 WiFiAnalyzerView()
             }
@@ -77,6 +80,7 @@ struct ContentView: View {
         case .charts: return "chart.xyaxis.line"
         case .controls: return "slider.horizontal.3"
         case .router: return "network.badge.shield.half.filled"
+        case .tripLog: return "map"
         case .wifiAnalyzer: return "wifi.exclamationmark"
         }
     }

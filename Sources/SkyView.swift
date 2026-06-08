@@ -3,7 +3,6 @@ import SceneKit
 
 struct SkyView: View {
     @ObservedObject var monitor: TelemetryMonitor
-    @StateObject private var tracker = SatelliteTracker()
     
     var body: some View {
         VStack(spacing: 30) {
@@ -22,10 +21,10 @@ struct SkyView: View {
                     .background(Color.black.opacity(0.8))
                     .cornerRadius(16)
                     .onAppear {
-                        tracker.startTracking()
+                        // Tracker is managed by TelemetryMonitor
                     }
                     .onDisappear {
-                        tracker.stopTracking()
+                        // Tracker is managed by TelemetryMonitor
                     }
                     
                     HStack(spacing: 20) {
@@ -138,7 +137,7 @@ struct SkyView: View {
         dishNode.addChildNode(beamPivotNode)
         
         // 6. Overhead Satellites (SGP4)
-        for sat in tracker.visibleSatellites {
+        for sat in monitor.tracker.visibleSatellites {
             let satSphere = SCNSphere(radius: 0.1)
             let satMaterial = SCNMaterial()
             satMaterial.diffuse.contents = NSColor.white
