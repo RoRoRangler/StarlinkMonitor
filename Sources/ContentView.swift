@@ -10,6 +10,7 @@ struct ContentView: View {
         case clients = "Connected Devices"
         case charts = "Telemetry Charts"
         case controls = "Hardware Controls"
+        case wifiAnalyzer = "WiFi Analyzer"
         var id: String { self.rawValue }
     }
     
@@ -55,6 +56,8 @@ struct ContentView: View {
                 ChartsView(monitor: monitor)
             case .controls:
                 ControlsView(monitor: monitor)
+            case .wifiAnalyzer:
+                WiFiAnalyzerView()
             }
         }
         .frame(minWidth: 800, minHeight: 600)
@@ -70,6 +73,7 @@ struct ContentView: View {
         case .clients: return "network"
         case .charts: return "chart.xyaxis.line"
         case .controls: return "slider.horizontal.3"
+        case .wifiAnalyzer: return "wifi.exclamationmark"
         }
     }
 }

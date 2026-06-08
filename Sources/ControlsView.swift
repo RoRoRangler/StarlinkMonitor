@@ -6,6 +6,7 @@ struct ControlsView: View {
     @State private var isRunningSpeedtest: Bool = false
     @State private var speedtestResult: String = ""
     @State private var actionMessage: String = ""
+    @State private var isActionRunning: Bool = false
     @State private var snowMeltMode: SpaceX_API_Device_DishConfig.SnowMeltMode = .auto
     
     var body: some View {
@@ -57,8 +58,39 @@ struct ControlsView: View {
                         Text("Always Off").tag(SpaceX_API_Device_DishConfig.SnowMeltMode.alwaysOff)
                     }
                     .frame(width: 150)
-                    .onChange(of: snowMeltMode) { newValue in
-                        performAction { try await $0.setSnowMeltMode(newValue) }
+                }
+            }
+            .padding()
+            .background(.regularMaterial)
+            .cornerRadius(12)
+            .onChange(of: snowMeltMode) { oldValue, newValue in
+                performAction { try await $0.setSnowMeltMode(newValue) }
+            }
+            
+            VStack(alignment: .leading, spacing: 15) {
+                Text("Speed Diagnostics")
+                    .font(.headline)
+                
+                HStack(spacing: 20) {
+                    Button(action: {
+                        performAction {
+                            let speedTest = try await $0.startSpeedtest()
+                            print("Speed test complete: \(speedTest)")
+                            return speedTest
+                        }
+                    }) {
+                        Text("Run Speed Test")
+                            .foregroundColor(.white)
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .background(Color.blue)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    if isActionRunning {
+                        ProgressView()
+                            .scaleEffect(0.8)
                     }
                 }
             }
@@ -67,27 +99,19 @@ struct ControlsView: View {
             .cornerRadius(12)
             
             VStack(alignment: .leading, spacing: 15) {
-                Text("Speed Diagnostics")
-                    .font(.title2)
-                    .bold()
+                Text("Advanced")
+                    .font(.headline)
                 
-                HStack(spacing: 20) {
-                    Button(action: runSpeedtest) {
-                        if isRunningSpeedtest {
-                            ProgressView().scaleEffect(0.5)
-                                .frame(width: 140, height: 40)
-                        } else {
-                            Label("Run Speedtest", systemImage: "network")
-                                .frame(width: 140, height: 40)
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                    .disabled(isRunningSpeedtest)
-                    
-                    Text(speedtestResult)
-                        .font(.callout)
-                        .foregroundColor(.secondary)
+                Button(action: {
+                    let _ = false
+                    // Implement reset logic here using Service
+                }) {
+                    Text("Reboot Dish")
+                        .foregroundColor(.white)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color.red)
+                        .cornerRadius(8)
                 }
             }
             .padding()
@@ -102,16 +126,22 @@ struct ControlsView: View {
     
     private func performAction(_ action: @escaping (StarlinkService) async throws -> Any) {
         actionMessage = "Sending command..."
+        isActionRunning = true
         Task {
             do {
                 let service = try StarlinkService(host: monitor.ipAddress)
                 let _ = try await action(service)
-                await MainActor.run { actionMessage = "Command succeeded!" }
-                // Clear message after 3 seconds
+                await MainActor.run { 
+                    actionMessage = "Command succeeded!"
+                    isActionRunning = false
+                }
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 await MainActor.run { actionMessage = "" }
             } catch {
-                await MainActor.run { actionMessage = "Command failed: \(error.localizedDescription)" }
+                await MainActor.run { 
+                    actionMessage = "Command failed: \(error.localizedDescription)"
+                    isActionRunning = false
+                }
             }
         }
     }
@@ -125,7 +155,7 @@ struct ControlsView: View {
                 let service = try StarlinkService(host: monitor.ipAddress)
                 _ = try await service.startSpeedtest()
                 
-                var completed = false
+                let completed = false
                 var attempts = 0
                 while !completed && attempts < 15 {
                     try await Task.sleep(nanoseconds: 2_000_000_000)

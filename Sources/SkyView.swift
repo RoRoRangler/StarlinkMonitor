@@ -3,6 +3,7 @@ import SceneKit
 
 struct SkyView: View {
     @ObservedObject var monitor: TelemetryMonitor
+    @StateObject private var tracker = SatelliteTracker()
     
     var body: some View {
         VStack(spacing: 30) {
@@ -20,6 +21,12 @@ struct SkyView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black.opacity(0.8))
                     .cornerRadius(16)
+                    .onAppear {
+                        tracker.startTracking()
+                    }
+                    .onDisappear {
+                        tracker.stopTracking()
+                    }
                     
                     HStack(spacing: 20) {
                         Label("Clear Sky", systemImage: "circle.fill")
@@ -104,6 +111,62 @@ struct SkyView: View {
         constraint.isGimbalLockEnabled = true
         cameraNode.constraints = [constraint]
         scene.rootNode.addChildNode(cameraNode)
+        
+        // 5. Active Phased Array Tracking Beam
+        let beamLength: Float = 10.0
+        let beam = SCNCylinder(radius: 0.02, height: CGFloat(beamLength))
+        let beamMaterial = SCNMaterial()
+        beamMaterial.diffuse.contents = NSColor.green
+        beamMaterial.emission.contents = NSColor.green
+        beamMaterial.transparency = 0.8
+        beam.materials = [beamMaterial]
+        
+        let beamNode = SCNNode(geometry: beam)
+        // Position beam so base is at the dish
+        beamNode.position = SCNVector3(0, beamLength / 2.0, 0)
+        
+        let beamPivotNode = SCNNode()
+        beamPivotNode.addChildNode(beamNode)
+        
+        // Calculate Euler angles from Boresight Telemetry
+        // Note: SceneKit uses radians. Azimuth is clockwise from North, Elevation is up from horizon.
+        let azRad = Float(monitor.boresightAzimuthDeg) * .pi / 180.0
+        let elRad = Float(monitor.boresightElevationDeg) * .pi / 180.0
+        // SceneKit Y is up. Rotate around X for elevation, around Y for azimuth.
+        beamPivotNode.eulerAngles = SCNVector3(.pi / 2 - elRad, -azRad, 0)
+        
+        dishNode.addChildNode(beamPivotNode)
+        
+        // 6. Overhead Satellites (SGP4)
+        for sat in tracker.visibleSatellites {
+            let satSphere = SCNSphere(radius: 0.1)
+            let satMaterial = SCNMaterial()
+            satMaterial.diffuse.contents = NSColor.white
+            satMaterial.emission.contents = NSColor.cyan
+            satSphere.materials = [satMaterial]
+            
+            let satNode = SCNNode(geometry: satSphere)
+            
+            let satAzRad = Float(sat.azimuth) * .pi / 180.0
+            let satElRad = Float(sat.elevation) * .pi / 180.0
+            let distance: Float = 9.8 // Just inside the sky dome
+            
+            let x = distance * cos(satElRad) * sin(satAzRad)
+            let y = distance * sin(satElRad)
+            let z = -distance * cos(satElRad) * cos(satAzRad)
+            
+            satNode.position = SCNVector3(x, y, z)
+            
+            // Add tiny label
+            let text = SCNText(string: sat.name.replacingOccurrences(of: "STARLINK-", with: "SL-"), extrusionDepth: 0)
+            text.font = NSFont.systemFont(ofSize: 0.3)
+            text.firstMaterial?.diffuse.contents = NSColor.white
+            let textNode = SCNNode(geometry: text)
+            textNode.position = SCNVector3(0.1, 0.1, 0)
+            satNode.addChildNode(textNode)
+            
+            scene.rootNode.addChildNode(satNode)
+        }
         
         return scene
     }

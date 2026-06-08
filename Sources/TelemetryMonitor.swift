@@ -26,6 +26,10 @@ class TelemetryMonitor: ObservableObject {
     @Published var downlinkThroughputHistory: [Float] = []
     @Published var uplinkThroughputHistory: [Float] = []
     
+    // Tracking
+    @Published var boresightAzimuthDeg: Double = 0
+    @Published var boresightElevationDeg: Double = 0
+    
     // Sky View
     @Published var obstructionMap: SpaceX_API_Device_DishGetObstructionMapResponse? = nil
     
@@ -113,6 +117,9 @@ class TelemetryMonitor: ObservableObject {
             self.dropRateHistory = Array(history.popPingDropRate.suffix(60))
             self.downlinkThroughputHistory = Array(history.downlinkThroughputBps.suffix(60))
             self.uplinkThroughputHistory = Array(history.uplinkThroughputBps.suffix(60))
+            
+            self.boresightAzimuthDeg = Double(status.dishGetStatus.boresightAzimuthDeg)
+            self.boresightElevationDeg = Double(status.dishGetStatus.boresightElevationDeg)
             
         } catch {
             self.state = "Error: \(error.localizedDescription)"
